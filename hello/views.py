@@ -1,13 +1,16 @@
 import boto3
 import uuid
 from django.shortcuts import render, redirect
-
+from django.views.decorators.http import require_http_methods
 # Clientes AWS
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 tabla = dynamodb.Table('Usuario')
 
 s3 = boto3.client('s3', region_name='us-east-1')
 rekognition = boto3.client('rekognition', region_name='us-east-1')
+
+sns = boto3.client('sns', region_name='us-east-1')
+SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:047719650114:notificaciones-calorias'  # remplaza con el tuyo
 
 # Diccionario ejemplo de alimentos con sus calorías (ajusta o extiende)
 ALIMENTOS_CALORIAS = {
@@ -62,6 +65,15 @@ def user_dashboard(request):
                 ExpressionAttributeValues={':c': nueva_calorias}
             )
             datos['calorias'] = nueva_calorias
+            # Enviar notificación por correo
+            mensaje = f"El usuario {datos['nombre']} ahora tiene {nueva_calorias} calorías restantes."
+            sns.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Message=mensaje,
+                Subject='Actualización de calorías'
+            )
+
+            
 
     return render(request, 'hello/dashboard.html', {
         'usuario': datos,
@@ -84,3 +96,44 @@ def crear_usuario(request):
         return redirect(f"/?usuario_id={usuario_id}")
 
     return render(request, 'hello/crear_usuario.html')
+
+
+@require_http_methods(["GET", "POST"])
+
+def editar_calorias(request, usuario_id):
+    # Obtener datos del usuario
+    datos = tabla.get_item(Key={'usuario_id': usuario_id}).get('Item')
+    if not datos:
+        return render(request, 'hello/editar_calorias.html', {'error': 'Usuario no encontrado.'})
+
+    if request.method == 'POST':
+        # Obtener el nuevo valor enviado
+        try:
+            nuevas_calorias = int(request.POST.get('calorias'))
+            if nuevas_calorias < 0:
+                raise ValueError("Calorías no pueden ser negativas")
+        except (TypeError, ValueError):
+            return render(request, 'hello/editar_calorias.html', {
+                'usuario': datos,
+                'error': 'Por favor ingresa un número válido de calorías.'
+            })
+
+        # Actualizar en DynamoDB
+        tabla.update_item(
+            Key={'usuario_id': usuario_id},
+            UpdateExpression='SET calorias = :c',
+            ExpressionAttributeValues={':c': nuevas_calorias}
+        )
+        # Refrescar datos para mostrar actualizado
+        datos['calorias'] = nuevas_calorias
+        # Enviar notificación por correo
+        mensaje = f"El usuario {datos['nombre']} ha actualizado sus calorias ahora tiene {nuevas_calorias} calorías restantes."
+        sns.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Message=mensaje,
+                Subject='Actualización de calorías'
+            )
+        return redirect(f"/?usuario_id={usuario_id}")
+
+    # Si es GET, mostrar formulario con valor actual
+    return render(request, 'hello/editar_calorias.html', {'usuario': datos})
