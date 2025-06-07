@@ -10,10 +10,11 @@
     <div class="card shadow-lg rounded-4">
         <div class="card-body text-center">
             <a href="{% url 'crear' %}" class="btn btn-outline-primary mb-4">➕ Crear nuevo usuario</a><br>
-            <a href="{% url 'editar_calorias' usuario.usuario_id %}" class="btn btn-outline-warning">
-                ✏️ Editar calorías
-              </a>
-              
+            {% if usuario %}
+  <a href="{% url 'editar_calorias' usuario.usuario_id %}">Editar calorías</a>
+{% else %}
+  <p>Selecciona un usuario para editar sus calorías.</p>
+{% endif %}
 
             <!-- Formulario para seleccionar usuario -->
             <form method="get" class="mb-4">
